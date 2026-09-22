@@ -8,6 +8,17 @@ It's a single-window native app (Swift + WKWebView) that stores everything
 locally in `~/Library/Application Support/GradeTracker/data.json`. Nothing is
 sent over the network.
 
+## Download
+
+1. Go to [Releases](https://github.com/dongyundieddie/grade-tracker/releases) and download `Grade Tracker.app.zip` from the latest release.
+2. Unzip it and drag **Grade Tracker.app** into your `Applications` folder.
+3. Right-click (or Control-click) the app and choose **Open**, then confirm.
+   The first launch has to be done this way because the app isn't signed
+   with a paid Apple Developer certificate — after that first approval it
+   opens normally, including from Spotlight or Launchpad.
+
+Requires macOS 11 or later. No installer, no account, nothing sent over the network.
+
 ## Features
 
 - Multiple courses, each with its own grading categories, weights, and letter
@@ -20,10 +31,10 @@ sent over the network.
   reach each letter grade.
 - Local autosave, plus manual export/import of a JSON backup.
 
-## Building
+## Building from source
 
-Requires Xcode command line tools (`swiftc`, `iconutil`, `sips`, `codesign`)
-on macOS.
+Only needed if you want to modify the app yourself. Requires Xcode command
+line tools (`swiftc`, `iconutil`, `sips`, `codesign`) on macOS.
 
 ```bash
 ./build.sh
