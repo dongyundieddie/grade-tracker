@@ -1,0 +1,686 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Grade Tracker · 成绩追踪</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root {
+  --bg: #f4f5f7; --panel: #ffffff; --side: #ebedf1; --ink: #1c2330; --ink2: #5b6577; --ink3: #8b94a5;
+  --line: #e1e4ea; --accent: #2f6fed; --accent-soft: #e7efff;
+  --ok: #157f4b; --ok-soft: #e0f5ea; --warn: #b26a00; --warn-soft: #fff1d6;
+  --bad: #c0352b; --bad-soft: #fde8e6; --hard: #c2570c; --hard-soft: #ffe9d9;
+  --shadow: 0 1px 2px rgba(20,30,50,.06), 0 4px 14px rgba(20,30,50,.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171d; --panel: #1d222b; --side: #191d24; --ink: #e8ecf3; --ink2: #a3adbf; --ink3: #7c8698;
+    --line: #2c333f; --accent: #6b9cff; --accent-soft: #24304a;
+    --ok: #4cc98a; --ok-soft: #173a2b; --warn: #f0b04a; --warn-soft: #3f3116;
+    --bad: #ff7a70; --bad-soft: #43201d; --hard: #ff9d5c; --hard-soft: #43291a;
+    --shadow: 0 1px 2px rgba(0,0,0,.3);
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif; -webkit-font-smoothing: antialiased; }
+button, input, select { font: inherit; color: inherit; }
+#app { display: flex; height: 100vh; }
+
+/* sidebar */
+#side { width: 232px; flex: none; background: var(--side); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 18px 12px 12px; }
+.brand { font-weight: 700; font-size: 15px; padding: 0 8px 14px; letter-spacing: .2px; }
+.brand small { display: block; font-weight: 500; color: var(--ink3); font-size: 11.5px; margin-top: 2px; }
+#courseList { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.course-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 10px; border-radius: 9px; cursor: pointer; border: 1px solid transparent; }
+.course-item:hover { background: rgba(127,127,127,.12); }
+.course-item.active { background: var(--panel); border-color: var(--line); box-shadow: var(--shadow); }
+.course-item .cn { font-weight: 600; }
+.course-item .cs { font-size: 12px; color: var(--ink3); }
+.mini { font-weight: 700; font-size: 13px; text-align: right; white-space: nowrap; }
+.mini small { display: block; font-weight: 500; color: var(--ink3); font-size: 11px; }
+.side-foot { padding-top: 10px; border-top: 1px solid var(--line); margin-top: 8px; display: grid; gap: 6px; }
+#saveState { font-size: 11.5px; color: var(--ink3); padding: 2px 4px; min-height: 16px; }
+#saveState.err { color: var(--bad); font-weight: 600; }
+
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 7px 12px; cursor: pointer; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { filter: brightness(1.08); color: #fff; }
+.btn.danger { color: var(--bad); }
+.btn.danger:hover { border-color: var(--bad); color: var(--bad); }
+.btn.small { padding: 4px 10px; font-size: 12.5px; }
+.top .btn { white-space: nowrap; flex: none; }
+.btn.ghost { background: transparent; }
+
+/* main */
+#main { flex: 1; overflow-y: auto; padding: 26px 32px 60px; }
+.wrap { max-width: 1040px; margin: 0 auto; }
+.top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.top h1 { margin: 0; font-size: 24px; letter-spacing: .1px; }
+.top .sub { color: var(--ink2); margin-top: 3px; }
+.top .note { color: var(--ink3); font-size: 12.5px; margin-top: 2px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 18px 20px; margin-bottom: 18px; }
+.card h2 { margin: 0 0 12px; font-size: 15px; }
+.hint { color: var(--ink3); font-size: 12.5px; }
+
+/* summary */
+.tiles { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr; gap: 14px; }
+.tile { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; background: var(--panel); }
+.tile .lbl { color: var(--ink2); font-size: 12.5px; }
+.tile .big { font-size: 34px; font-weight: 750; letter-spacing: -.5px; line-height: 1.15; margin-top: 4px; display: flex; align-items: baseline; gap: 10px; }
+.tile .mid { font-size: 24px; font-weight: 700; margin-top: 4px; }
+.tile .sm { color: var(--ink3); font-size: 12px; margin-top: 3px; }
+.letter { display: inline-block; min-width: 30px; text-align: center; padding: 1px 9px; border-radius: 999px; font-weight: 800; font-size: 17px; }
+.L0 { background: var(--ok-soft); color: var(--ok); }
+.L1 { background: var(--accent-soft); color: var(--accent); }
+.L2 { background: var(--warn-soft); color: var(--warn); }
+.L3 { background: var(--hard-soft); color: var(--hard); }
+.L4, .Lx { background: var(--bad-soft); color: var(--bad); }
+.progress { height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; margin-top: 8px; }
+.progress > i { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
+
+/* targets */
+.assume { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 12px; color: var(--ink2); }
+.assume input { width: 64px; text-align: center; }
+.assume b { color: var(--ink); }
+table.matrix { width: 100%; border-collapse: separate; border-spacing: 0; }
+.matrix th, .matrix td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+.matrix th { font-weight: 600; color: var(--ink2); font-size: 12.5px; background: transparent; }
+.matrix th small { display: block; font-weight: 500; color: var(--ink3); }
+.matrix tr:last-child td { border-bottom: 0; }
+.matrix .lettercell { white-space: nowrap; }
+.matrix .lettercell small { color: var(--ink3); margin-left: 6px; }
+.cell .v { font-weight: 700; font-size: 15px; }
+.cell .s { font-size: 11.5px; color: var(--ink3); margin-top: 1px; }
+.cell.ok .v { color: var(--ok); }
+.cell.easy .v { color: var(--ok); }
+.cell.mid .v { color: var(--accent); }
+.cell.hard .v { color: var(--hard); }
+.cell.no .v { color: var(--bad); }
+.cell.na .v { color: var(--ink3); font-weight: 500; }
+.matrix td.allcol { background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
+
+/* categories */
+.cat-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+.cat-head h3 { margin: 0; font-size: 16px; display: inline; }
+.chip { display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); margin-left: 8px; font-weight: 600; vertical-align: 1px; }
+.chip.gray { background: var(--line); color: var(--ink2); }
+.cat-stat { color: var(--ink2); font-size: 13px; text-align: right; }
+.cat-stat b { color: var(--ink); font-size: 15px; }
+.rows { display: grid; gap: 6px; }
+.row, .rowhead { display: grid; grid-template-columns: minmax(120px, 1fr) 84px 14px 76px 64px 138px 28px; align-items: center; gap: 8px; }
+.rowhead { color: var(--ink3); font-size: 11.5px; padding: 0 2px; }
+.row input { width: 100%; }
+input[type=text], input:not([type]), input[type=number], input[type=date], select { border: 1px solid var(--line); background: var(--bg); border-radius: 7px; padding: 6px 9px; min-width: 0; }
+input:focus, select:focus { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); border-color: var(--accent); }
+.row .slash { text-align: center; color: var(--ink3); }
+.row .pct { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.row.pending .pct { color: var(--ink3); font-weight: 500; }
+.row.dropped input, .row.dropped .pct { opacity: .5; text-decoration: line-through; }
+.row .x { border: 0; background: transparent; color: var(--ink3); cursor: pointer; font-size: 18px; line-height: 1; border-radius: 6px; height: 28px; }
+.row .x:hover { color: var(--bad); background: var(--bad-soft); }
+.cat-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; gap: 10px; flex-wrap: wrap; }
+.empty { text-align: center; padding: 70px 20px; color: var(--ink2); }
+.empty h2 { color: var(--ink); }
+
+/* settings */
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px 14px; }
+.form-grid label { display: grid; gap: 4px; color: var(--ink2); font-size: 12.5px; }
+.form-grid .full { grid-column: 1 / -1; }
+table.set { width: 100%; border-collapse: collapse; }
+.set th { text-align: left; font-size: 12px; color: var(--ink3); font-weight: 600; padding: 0 6px 6px 0; }
+.set td { padding: 4px 6px 4px 0; }
+.set input, .set select { width: 100%; }
+.wsum { font-weight: 700; }
+.wsum.bad { color: var(--bad); }
+.wsum.good { color: var(--ok); }
+.check { display: flex; align-items: center; gap: 8px; color: var(--ink2); }
+
+/* modal */
+#modalRoot .mask { position: fixed; inset: 0; background: rgba(10,14,22,.45); display: grid; place-items: center; z-index: 10; }
+.modal { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; width: min(440px, 92vw); box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+.modal h3 { margin: 0 0 8px; }
+.modal p { margin: 0 0 16px; color: var(--ink2); white-space: pre-line; }
+.modal .acts { display: flex; justify-content: flex-end; gap: 8px; }
+
+@media (max-width: 900px) {
+  .tiles { grid-template-columns: 1fr 1fr; }
+  #main { padding: 20px 16px 50px; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="side">
+    <div class="brand">Grade Tracker<small>成绩追踪 · 数据只存在本机</small></div>
+    <nav id="courseList"></nav>
+    <div class="side-foot">
+      <button class="btn" id="addCourse">＋ 添加课程</button>
+      <button class="btn small ghost" id="btnExport">导出备份</button>
+      <button class="btn small ghost" id="btnImport">导入备份</button>
+      <div id="saveState"></div>
+    </div>
+  </aside>
+  <main id="main"></main>
+</div>
+<div id="modalRoot"></div>
+<input type="file" id="fileIn" accept=".json,application/json" hidden>
+
+<script>
+"use strict";
+/* ───────────────────────── helpers ───────────────────────── */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const uid = () => Math.random().toString(36).slice(2, 9);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+const isNum = v => v !== null && v !== undefined && v !== "" && !isNaN(+v);
+const fmt = (x, d = 1) => (x === null || x === undefined || isNaN(x)) ? "—" : (Math.round(x * 10 ** d) / 10 ** d).toFixed(d);
+const ceil1 = x => (Math.ceil(x * 10 - 1e-9) / 10).toFixed(1);
+const num = v => isNum(v) ? +v : null;
+
+/* ───────────────────────── data model ───────────────────────── */
+const DEFAULT_SCALE = () => [{ letter: "A", min: 90 }, { letter: "B", min: 80 }, { letter: "C", min: 70 }, { letter: "D", min: 60 }];
+
+function newCat(name, weight, o = {}) {
+  return { id: uid(), name, weight, method: "avg", drop: 0, doubleHighest: false, planned: 1, defaultMax: 100, items: [], ...o };
+}
+function math350() {
+  return {
+    id: uid(), code: "MATH 350", name: "Mathematical Statistics", term: "Fall 2026",
+    instructor: "Dr. Soumya Bhoumik",
+    notes: "期末考试：12 月 9 日（周三）9:30–11:10 am。Syllabus 未写明作业/单元考的次数，下面的“计划数量”是预设值，知道后请在【课程设置】里修改。",
+    scale: DEFAULT_SCALE(), failLabel: "U", roundToInt: false, assume: null,
+    categories: [
+      newCat("Homework", 20, { method: "avg", planned: 30, defaultMax: 10 }),
+      newCat("Unit Exams", 55, { method: "avg", planned: 4, defaultMax: 100 }),
+      newCat("Final Exam", 20, { method: "points", planned: 1, defaultMax: 100 }),
+      newCat("Attendance", 5, { method: "points", planned: 15, defaultMax: 3 }),
+    ],
+  };
+}
+function math301() {
+  return {
+    id: uid(), code: "MATH 301", name: "Introduction to Proofs", term: "Fall 2026",
+    instructor: "Paul Flesher",
+    notes: "期末考试：12 月 7 日（周一）10:30–12:10。CYU 题目 syllabus 没给权重，所以不计分。计划数量是预设值，拿到 Course Schedule 后请在【课程设置】里核对。",
+    scale: DEFAULT_SCALE(), failLabel: "U", roundToInt: false, assume: null,
+    categories: [
+      newCat("Reading", 8, { method: "avg", planned: 40, defaultMax: 10 }),
+      newCat("Office Visits", 12, { method: "avg", planned: 6, defaultMax: 100 }),
+      newCat("LaTeX Documents", 12, { method: "avg", planned: 4, defaultMax: 100 }),
+      newCat("Theorem Proof", 8, { method: "avg", planned: 2, defaultMax: 100 }),
+      newCat("Unit Exams", 40, { method: "avg", planned: 2, defaultMax: 100 }),
+      newCat("Final Exam", 20, { method: "points", planned: 1, defaultMax: 100 }),
+    ],
+  };
+}
+function biol100() {
+  const examItem = (n, date) => ({ id: uid(), name: `Exam ${n}`, score: null, max: null, date });
+  return {
+    id: uid(), code: "BIOL 100", name: "Human Biology (Section C)", term: "Fall 2026",
+    instructor: "Dr. David A. Tarailo",
+    notes: "Exams 类别已勾选“最高分×2”——5 次考试里分数最高的一次会算两次，等于按 6 次算，syllabus 原话是这样。5 次考试的日期是按课程表填的（Exam 5 是 12/7 或 12/9，没最终定，先填 12/7，之后请改)。Blackboard/Socrative 小测和 Homework 的具体次数 syllabus 没写死，下面的“计划数量”是我估的，请开学后在【课程设置】里核对，尤其 Socrative 一类：每周一的小测、偶尔的课堂随堂测、以及每次期中考当晚的 exam wrapper（算一次 Socrative 小测分）都算在这一类里，很容易被我估少或估多。",
+    scale: DEFAULT_SCALE(), failLabel: "U", roundToInt: false, assume: null,
+    categories: [
+      newCat("Blackboard Quizzes", 20, { method: "avg", planned: 15, defaultMax: 10 }),
+      newCat("Socrative Quizzes", 20, { method: "avg", planned: 15, defaultMax: 10 }),
+      newCat("Activities & Homework", 20, { method: "avg", planned: 8, defaultMax: 10 }),
+      newCat("Exams", 40, { method: "avg", doubleHighest: true, planned: 5, defaultMax: 100, items: [
+        examItem(1, "2026-09-09"), examItem(2, "2026-09-28"), examItem(3, "2026-10-19"), examItem(4, "2026-11-09"), examItem(5, "2026-12-07"),
+      ] }),
+    ],
+  };
+}
+/* Built-in courses are added once (tracked in S.seeded); deleting one keeps it deleted. */
+const BUILTINS = [{ key: "math350", make: math350 }, { key: "math301", make: math301 }, { key: "biol100", make: biol100 }];
+function seedBuiltins() {
+  S.seeded = S.seeded || ["math350"];
+  let changed = false;
+  for (const b of BUILTINS) if (!S.seeded.includes(b.key)) { S.courses.push(b.make()); S.seeded.push(b.key); changed = true; }
+  if (!S.activeId || !S.courses.some(c => c.id === S.activeId)) S.activeId = S.courses[0]?.id ?? null;
+  return changed;
+}
+
+function blankCourse() {
+  return {
+    id: uid(), code: "新课程", name: "", term: "", instructor: "", notes: "",
+    scale: DEFAULT_SCALE(), failLabel: "F", roundToInt: false, assume: null,
+    categories: [
+      newCat("Homework", 25, { planned: 10, defaultMax: 10 }),
+      newCat("Quizzes", 15, { planned: 5 }),
+      newCat("Midterm", 30, { planned: 1, method: "points" }),
+      newCat("Final Exam", 30, { planned: 1, method: "points" }),
+    ],
+  };
+}
+
+/* ───────────────────────── grade math ───────────────────────── */
+const isGraded = it => isNum(it.score);
+const maxOf = (it, c) => (isNum(it.max) && +it.max > 0) ? +it.max : c.defaultMax;
+const phantomCount = c => Math.max(0, (c.planned || 0) - c.items.length);
+const pendingCount = c => c.items.filter(it => !isGraded(it)).length;
+const remaining = c => pendingCount(c) + phantomCount(c);
+const gradedCount = c => c.items.filter(isGraded).length;
+
+/* Build the list of scoring entries for a category.
+   fill === null → graded items only; fill = number → ungraded/planned items get fill % of their max. */
+function catList(c, fill) {
+  const list = [];
+  for (const it of c.items) {
+    if (isGraded(it)) list.push({ s: +it.score, m: isNum(it.max) ? +it.max : c.defaultMax, id: it.id });
+    else if (fill !== null) { const m = maxOf(it, c); list.push({ s: fill / 100 * m, m, id: it.id }); }
+  }
+  if (fill !== null) {
+    const dm = c.defaultMax > 0 ? c.defaultMax : 100;
+    for (let i = 0; i < phantomCount(c); i++) list.push({ s: fill / 100 * dm, m: dm, id: null });
+  }
+  if (c.doubleHighest && list.length) {
+    const best = list.reduce((a, b) => (b.m > 0 ? b.s / b.m : -Infinity) > (a.m > 0 ? a.s / a.m : -Infinity) ? b : a);
+    list.push({ ...best });
+  }
+  let dropped = [];
+  if (c.drop > 0 && list.length > c.drop) {
+    const order = list.map((e, i) => ({ i, r: e.m > 0 ? e.s / e.m : Infinity })).sort((a, b) => a.r - b.r);
+    const cut = new Set(order.slice(0, c.drop).map(o => o.i));
+    dropped = list.filter((_, i) => cut.has(i));
+    return { list: list.filter((_, i) => !cut.has(i)), dropped };
+  }
+  return { list, dropped };
+}
+function catPct(c, fill) {
+  const { list } = catList(c, fill);
+  if (!list.length) return null;
+  if (c.method === "points") {
+    const sm = list.reduce((a, e) => a + e.m, 0);
+    return sm > 0 ? list.reduce((a, e) => a + e.s, 0) / sm * 100 : null;
+  }
+  const v = list.filter(e => e.m > 0);
+  return v.length ? v.reduce((a, e) => a + e.s / e.m * 100, 0) / v.length : null;
+}
+/* Course grade. fills(c) → null | fill percent for that category. */
+function calc(course, fills) {
+  let n = 0, d = 0;
+  for (const c of course.categories) {
+    const p = catPct(c, fills(c));
+    if (p !== null && c.weight > 0) { n += c.weight * p; d += c.weight; }
+  }
+  return d > 0 ? n / d : null;
+}
+const totalWeight = course => course.categories.reduce((a, c) => a + (+c.weight || 0), 0);
+function letterFor(course, pct) {
+  if (pct === null) return null;
+  const p = course.roundToInt ? Math.round(pct) : pct;
+  const sc = [...course.scale].sort((a, b) => b.min - a.min);
+  for (const s of sc) if (p >= s.min - 1e-9) return s.letter;
+  return course.failLabel || "F";
+}
+function letterClass(course, letter) {
+  const sc = [...course.scale].sort((a, b) => b.min - a.min);
+  const i = sc.findIndex(s => s.letter === letter);
+  return i < 0 ? "Lx" : "L" + Math.min(i, 4);
+}
+function progress(course) {
+  let n = 0, d = 0;
+  for (const c of course.categories) {
+    const tot = gradedCount(c) + remaining(c);
+    if (tot > 0 && c.weight > 0) { n += c.weight * gradedCount(c) / tot; d += c.weight; }
+  }
+  return d > 0 ? n / d * 100 : 0;
+}
+/* Solve for the uniform % needed on the variable categories' remaining work. */
+function solve(course, threshold, varIds, assumed) {
+  const f = x => calc(course, c => varIds.has(c.id) ? x : assumed);
+  if (f(0) >= threshold - 1e-9) return { status: "secured" };
+  const rem = course.categories.filter(c => varIds.has(c.id)).reduce((a, c) => a + remaining(c), 0);
+  if (rem === 0) return { status: "lost" };
+  if (f(1000) < threshold) return { status: "lost" };
+  let lo = 0, hi = 1000;
+  for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (f(mid) >= threshold - 1e-9) hi = mid; else lo = mid; }
+  return hi > 100.0001 ? { status: "stretch", x: hi } : { status: "need", x: hi };
+}
+const thresholdOf = (course, min) => min - (course.roundToInt ? 0.5 : 0);
+
+/* ───────────────────────── persistence ───────────────────────── */
+const KEY = "gradeTracker.v1";
+const native = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.store;
+let S = { version: 1, activeId: null, courses: [] };
+let view = "grades";   // grades | settings
+let saveTimer = null;
+
+async function loadState() {
+  let raw = null;
+  try { raw = native ? await native.postMessage({ op: "load" }) : localStorage.getItem(KEY); } catch (e) { console.error(e); }
+  if (raw) {
+    try { const d = JSON.parse(raw); if (d && Array.isArray(d.courses)) { S = d; if (seedBuiltins()) await saveNow(); return; } } catch (e) { console.error(e); }
+  }
+  S = { version: 1, activeId: null, courses: [], seeded: [] };
+  seedBuiltins();
+  await saveNow();
+}
+async function saveNow() {
+  clearTimeout(saveTimer); saveTimer = null;
+  const el = $("#saveState");
+  try {
+    const raw = JSON.stringify(S);
+    if (native) await native.postMessage({ op: "save", data: raw }); else localStorage.setItem(KEY, raw);
+    el.className = ""; el.textContent = "已自动保存 ✓";
+  } catch (e) { console.error(e); el.className = "err"; el.textContent = "保存失败！请先“导出备份”"; }
+}
+function save() {
+  $("#saveState").className = ""; $("#saveState").textContent = "保存中…";
+  clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 250);
+}
+window.addEventListener("beforeunload", () => { if (saveTimer) saveNow(); });
+
+/* ───────────────────────── dialogs ───────────────────────── */
+function dialog({ title, body = "", ok = "确定", cancel = "取消", danger = false, hideCancel = false }) {
+  return new Promise(res => {
+    const root = $("#modalRoot");
+    root.innerHTML = `<div class="mask"><div class="modal" role="dialog"><h3>${esc(title)}</h3><p>${esc(body)}</p>
+      <div class="acts">${hideCancel ? "" : `<button class="btn" data-a="no">${esc(cancel)}</button>`}<button class="btn ${danger ? "danger" : "primary"}" data-a="yes">${esc(ok)}</button></div></div></div>`;
+    const done = v => { root.innerHTML = ""; document.removeEventListener("keydown", onKey); res(v); };
+    const onKey = e => { if (e.key === "Escape") done(false); if (e.key === "Enter") done(true); };
+    document.addEventListener("keydown", onKey);
+    root.onclick = e => { const a = e.target.closest("[data-a]"); if (a) done(a.dataset.a === "yes"); else if (e.target.classList.contains("mask")) done(false); };
+    setTimeout(() => $("[data-a=yes]", root)?.focus(), 0);
+  });
+}
+
+/* ───────────────────────── rendering ───────────────────────── */
+const cur = () => S.courses.find(c => c.id === S.activeId) || null;
+
+function renderSide() {
+  $("#courseList").innerHTML = S.courses.map(c => {
+    const p = calc(c, () => null), L = letterFor(c, p);
+    return `<div class="course-item ${c.id === S.activeId ? "active" : ""}" data-course="${c.id}">
+      <div><div class="cn">${esc(c.code || "未命名")}</div><div class="cs">${esc(c.name || c.term || "")}</div></div>
+      <div class="mini">${p === null ? "—" : fmt(p, 1) + "%"}<small>${L ?? ""}</small></div></div>`;
+  }).join("") || `<div class="hint" style="padding:8px">还没有课程</div>`;
+}
+
+function renderMain() {
+  const c = cur();
+  const main = $("#main");
+  if (!c) {
+    main.innerHTML = `<div class="empty wrap"><h2>还没有课程</h2><p>点击左下角“添加课程”，开始记录成绩。</p></div>`;
+    return;
+  }
+  if (view === "settings") return renderSettings(c);
+  main.scrollTop = main.scrollTop; // keep
+  main.innerHTML = `<div class="wrap">
+    <div class="top">
+      <div><h1>${esc(c.code)}${c.name ? " · " + esc(c.name) : ""}</h1>
+        <div class="sub">${esc([c.term, c.instructor].filter(Boolean).join(" · "))}</div>
+        ${c.notes ? `<div class="note">${esc(c.notes)}</div>` : ""}</div>
+      <button class="btn" data-act="settings">课程设置</button>
+    </div>
+    ${Math.abs(totalWeight(c) - 100) > 0.01 ? `<div class="card" style="border-color:var(--bad);color:var(--bad)">注意：各项权重之和是 ${fmt(totalWeight(c), 1)}%，不是 100%。请到【课程设置】检查。</div>` : ""}
+    <section class="card" id="summary"></section>
+    <section class="card">
+      <h2>想拿到某个等级，剩下平均要考多少？</h2>
+      <div id="matrix"></div>
+      <div class="hint" style="margin-top:8px">假设剩下所有还没出分的项目都拿到同一个百分比，这就是至少要拿多少（已向上取整到 0.1%）。</div>
+      <div class="assume" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">想估算大概会考多少分？剩下的项目预计能拿
+        <input id="assume" inputmode="decimal" value="${esc(assumeValue(c))}"> %
+        <span>→ 预测最终总评 <b id="proj"></b></span></div>
+    </section>
+    <div id="cats">${c.categories.map(catCard).join("")}</div>
+  </div>`;
+  updateDerived();
+}
+
+function assumeValue(c) {
+  if (c.assume !== null && c.assume !== undefined && c.assume !== "") return c.assume;
+  const p = calc(c, () => null);
+  return p === null ? 80 : Math.min(100, Math.round(p));
+}
+
+function catCard(c) {
+  return `<section class="card" data-cat="${c.id}">
+    <div class="cat-head">
+      <div><h3>${esc(c.name)}</h3><span class="chip">占总评 ${fmt(c.weight, 1).replace(/\.0$/, "")}%</span>
+        <span class="chip gray">${c.method === "points" ? "总分制" : "平均百分比"}${c.drop ? " · 去掉最低 " + c.drop + " 项" : ""}${c.doubleHighest ? " · 最高分算两次" : ""}</span></div>
+      <div class="cat-stat" data-stat></div>
+    </div>
+    <div class="rows">
+      <div class="rowhead"><span>名称</span><span>得分</span><span></span><span>满分</span><span style="text-align:right">百分比</span><span>日期（可选）</span><span></span></div>
+      ${c.items.map(it => rowHTML(it)).join("")}
+    </div>
+    <div class="cat-foot"><span><button class="btn small" data-act="addItem" data-n="1">＋ 添加一项</button> <button class="btn small" data-act="addItem" data-n="5">＋ 一次添加 5 项</button></span><span class="hint" data-foot></span></div>
+  </section>`;
+}
+function rowHTML(it) {
+  return `<div class="row" data-item="${it.id}">
+    <input type="text" data-f="name" value="${esc(it.name)}" placeholder="名称">
+    <input type="text" inputmode="decimal" data-f="score" value="${it.score ?? ""}" placeholder="未出分">
+    <span class="slash">/</span>
+    <input type="text" inputmode="decimal" data-f="max" value="${it.max ?? ""}" placeholder="">
+    <span class="pct" data-pct></span>
+    <input type="date" data-f="date" value="${esc(it.date || "")}">
+    <button class="x" data-act="delItem" title="删除这一项">×</button>
+  </div>`;
+}
+
+/* recompute every derived number without touching input elements */
+function updateDerived() {
+  const c = cur(); if (!c || view !== "grades") return;
+  const now = calc(c, () => null), lo = calc(c, () => 0), hi = calc(c, () => 100);
+  const Ln = letterFor(c, now), Ll = letterFor(c, lo), Lh = letterFor(c, hi);
+  const prog = progress(c);
+  const badge = (L) => L ? `<span class="letter ${letterClass(c, L)}">${esc(L)}</span>` : "";
+  $("#summary").innerHTML = `<div class="tiles">
+    <div class="tile"><div class="lbl">当前成绩（只算已出分的部分）</div>
+      <div class="big">${now === null ? "—" : fmt(now, 2) + "%"} ${badge(Ln)}</div>
+      <div class="sm">${now === null ? "还没有录入任何分数" : "已完成 " + fmt(prog, 0) + "% 的课程评分"}</div>
+      <div class="progress"><i style="width:${Math.min(100, prog)}%"></i></div></div>
+    <div class="tile"><div class="lbl">已锁定的分数</div><div class="mid">${lo === null ? "—" : fmt(lo, 2)}<span style="font-size:14px;color:var(--ink3)"> / 100</span></div>
+      <div class="sm">剩余全拿 0 分的最低总评 ${badge(Ll)}</div></div>
+    <div class="tile"><div class="lbl">最高还能到</div><div class="mid">${hi === null ? "—" : fmt(hi, 2) + "%"}</div>
+      <div class="sm">剩余全拿满分的最高总评 ${badge(Lh)}</div></div>
+    <div class="tile"><div class="lbl">还没出分的项目</div><div class="mid">${c.categories.reduce((a, k) => a + remaining(k), 0)} 项</div>
+      <div class="sm">含未录入的计划项目</div></div></div>`;
+
+  /* projection */
+  const a = num($("#assume")?.value);
+  const assumed = a === null ? assumeValue(c) : a;
+  const proj = calc(c, () => assumed);
+  const pl = letterFor(c, proj);
+  const projEl = $("#proj"); if (projEl) projEl.innerHTML = `${proj === null ? "—" : fmt(proj, 2) + "%"} ${pl ? `<span class="letter ${letterClass(c, pl)}" style="font-size:14px">${esc(pl)}</span>` : ""}`;
+
+  /* target table — one column: the average % needed across everything still ungraded */
+  const remCats = c.categories.filter(k => remaining(k) > 0 && k.weight > 0);
+  const scale = [...c.scale].sort((x, y) => y.min - x.min);
+  const allIds = new Set(remCats.map(k => k.id));
+  const remTotal = remCats.reduce((s, k) => s + remaining(k), 0);
+  let html = `<table class="matrix"><thead><tr><th>目标等级</th>
+    <th class="allcol">需要的平均分<small>${remTotal} 项还没出分</small></th></tr></thead><tbody>`;
+  for (const s of scale) {
+    const t = thresholdOf(c, s.min);
+    html += `<tr><td class="lettercell"><span class="letter ${letterClass(c, s.letter)}">${esc(s.letter)}</span><small>≥ ${fmt(s.min, 0)}%</small></td>`;
+    html += `<td class="allcol">${cellHTML(solve(c, t, allIds, 0))}</td></tr>`;
+  }
+  html += `</tbody></table>`;
+  $("#matrix").innerHTML = html;
+
+  /* categories */
+  for (const k of c.categories) {
+    const card = $(`[data-cat="${k.id}"]`); if (!card) continue;
+    const p = catPct(k, null), lockedPct = catPct(k, 0);
+    $("[data-stat]", card).innerHTML = p === null ? `<span class="hint">还没有分数</span>` :
+      `当前 <b>${fmt(p, 2)}%</b> · 已锁定 ${fmt(lockedPct * k.weight / 100, 2)} / ${fmt(k.weight, 1).replace(/\.0$/, "")} 分`;
+    const dropped = new Set(catList(k, null).dropped.map(e => e.id));
+    for (const it of k.items) {
+      const row = $(`[data-item="${it.id}"]`, card); if (!row) continue;
+      const m = isNum(it.max) ? +it.max : k.defaultMax;
+      row.classList.toggle("pending", !isGraded(it));
+      row.classList.toggle("dropped", dropped.has(it.id));
+      $("[data-pct]", row).textContent = isGraded(it) && m > 0 ? fmt(+it.score / m * 100, 1) + "%" : "—";
+      const mx = $('[data-f="max"]', row); mx.placeholder = String(k.defaultMax);
+    }
+    const ph = phantomCount(k);
+    $("[data-foot]", card).textContent = `计划共 ${Math.max(k.planned, k.items.length)} 项 · 已出分 ${gradedCount(k)} · 待出分 ${pendingCount(k)}${ph ? " · 尚未添加 " + ph : ""}`;
+  }
+  renderSide();
+}
+
+function cellHTML(r) {
+  switch (r.status) {
+    case "secured": return `<div class="cell ok"><div class="v">已达成 ✓</div><div class="s">不用再拿分也够</div></div>`;
+    case "lost": return `<div class="cell no"><div class="v">已不可能</div></div>`;
+    case "stretch": return `<div class="cell no"><div class="v">需 ${ceil1(r.x)}%</div><div class="s">超过 100%，除非有加分</div></div>`;
+    case "need": {
+      const cls = r.x <= 75 ? "easy" : r.x <= 90 ? "mid" : "hard";
+      return `<div class="cell ${cls}"><div class="v">≥ ${ceil1(r.x)}%</div></div>`;
+    }
+  }
+  return "—";
+}
+
+/* ───────────────────────── settings view ───────────────────────── */
+function renderSettings(c) {
+  $("#main").innerHTML = `<div class="wrap">
+    <div class="top"><div><h1>课程设置</h1><div class="sub">${esc(c.code)} — 修改会自动保存</div></div>
+      <button class="btn primary" data-act="back">← 返回成绩</button></div>
+    <section class="card"><h2>基本信息</h2><div class="form-grid">
+      <label>课程代码<input data-s="code" value="${esc(c.code)}"></label>
+      <label>课程名称<input data-s="name" value="${esc(c.name)}"></label>
+      <label>学期<input data-s="term" value="${esc(c.term)}"></label>
+      <label>老师<input data-s="instructor" value="${esc(c.instructor)}"></label>
+      <label class="full">备注（考试时间等）<input data-s="notes" value="${esc(c.notes)}"></label></div></section>
+    <section class="card"><h2>成绩构成（syllabus 里的 Grading Weights）</h2>
+      <table class="set"><thead><tr><th>项目名称</th><th style="width:84px">权重 %</th><th style="width:130px">计算方式</th><th style="width:80px">去掉最低</th><th style="width:80px">最高分×2</th><th style="width:88px">计划数量</th><th style="width:88px">默认满分</th><th style="width:34px"></th></tr></thead>
+      <tbody>${c.categories.map(k => `<tr data-cat="${k.id}">
+        <td><input data-cf="name" value="${esc(k.name)}"></td>
+        <td><input data-cf="weight" inputmode="decimal" value="${k.weight}"></td>
+        <td><select data-cf="method"><option value="avg" ${k.method === "avg" ? "selected" : ""}>平均百分比</option><option value="points" ${k.method === "points" ? "selected" : ""}>总分制</option></select></td>
+        <td><input data-cf="drop" inputmode="numeric" value="${k.drop}"></td>
+        <td style="text-align:center"><input type="checkbox" data-cf="doubleHighest" ${k.doubleHighest ? "checked" : ""}></td>
+        <td><input data-cf="planned" inputmode="numeric" value="${k.planned}"></td>
+        <td><input data-cf="defaultMax" inputmode="decimal" value="${k.defaultMax}"></td>
+        <td><button class="btn small danger" data-act="delCat" title="删除">×</button></td></tr>`).join("")}</tbody></table>
+      <div class="hint" style="margin-top:6px"><b>最高分×2</b>：勾选后，这一类里得分率最高的一项会被再算一次（比如"5 次考试，最高一次算两次"）。</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
+        <button class="btn small" data-act="addCat">＋ 添加项目</button>
+        <div>权重合计：<span class="wsum" id="wsum"></span></div></div>
+      <div class="hint" style="margin-top:10px"><b>平均百分比</b>：每一项按自己的得分率算，再取平均（每次考试同等重要）。<b>总分制</b>：所有得分加起来 ÷ 所有满分加起来（满分高的占比大）。<br>
+      <b>计划数量</b>：这一类一共会有几项（含还没发生的），用来估算“还要拿多少分”。<b>默认满分</b>：还没录入的项目按这个满分算。</div></section>
+    <section class="card"><h2>等级线</h2>
+      <table class="set" style="max-width:420px"><thead><tr><th>等级</th><th>最低百分比</th><th style="width:34px"></th></tr></thead>
+      <tbody>${c.scale.map((s, i) => `<tr data-sc="${i}"><td><input data-sf="letter" value="${esc(s.letter)}"></td><td><input data-sf="min" inputmode="decimal" value="${s.min}"></td><td><button class="btn small danger" data-act="delScale">×</button></td></tr>`).join("")}</tbody></table>
+      <div style="display:flex;gap:16px;align-items:center;margin-top:10px;flex-wrap:wrap">
+        <button class="btn small" data-act="addScale">＋ 添加等级</button>
+        <label class="check">低于最低线记为 <input data-s="failLabel" value="${esc(c.failLabel)}" style="width:56px"></label>
+        <label class="check"><input type="checkbox" data-s="roundToInt" ${c.roundToInt ? "checked" : ""}> 先四舍五入到整数再判等级（89.5 → 90）</label></div></section>
+    <section class="card"><h2>危险区</h2><button class="btn danger" data-act="delCourse">删除这门课程</button></section>
+  </div>`;
+  updateWsum();
+}
+function updateWsum() {
+  const c = cur(), el = $("#wsum"); if (!el) return;
+  const w = totalWeight(c);
+  el.textContent = fmt(w, 1).replace(/\.0$/, "") + "%" + (Math.abs(w - 100) < 0.01 ? " ✓" : "（应为 100%）");
+  el.className = "wsum " + (Math.abs(w - 100) < 0.01 ? "good" : "bad");
+}
+
+/* ───────────────────────── events ───────────────────────── */
+$("#main").addEventListener("input", e => {
+  const c = cur(); if (!c) return;
+  const t = e.target;
+  if (t.id === "assume") { c.assume = t.value.trim() === "" ? null : num(t.value); save(); updateDerived(); return; }
+  const row = t.closest("[data-item]");
+  if (row && t.dataset.f) {
+    const card = t.closest("[data-cat]"), k = c.categories.find(x => x.id === card.dataset.cat);
+    const it = k.items.find(x => x.id === row.dataset.item), f = t.dataset.f;
+    if (f === "name" || f === "date") it[f] = t.value;
+    else it[f] = t.value.trim() === "" ? null : (isNum(t.value.trim()) ? +t.value.trim() : it[f]);
+    save(); updateDerived(); return;
+  }
+  /* settings */
+  if (t.dataset.s) { const f = t.dataset.s; c[f] = t.type === "checkbox" ? t.checked : t.value; save(); return; }
+  const crow = t.closest("tr[data-cat]");
+  if (crow && t.dataset.cf) {
+    const k = c.categories.find(x => x.id === crow.dataset.cat), f = t.dataset.cf;
+    if (f === "name" || f === "method") k[f] = t.value;
+    else if (t.type === "checkbox") k[f] = t.checked;
+    else if (isNum(t.value)) k[f] = Math.max(0, +t.value);
+    save(); updateWsum(); return;
+  }
+  const srow = t.closest("tr[data-sc]");
+  if (srow && t.dataset.sf) {
+    const s = c.scale[+srow.dataset.sc], f = t.dataset.sf;
+    if (f === "letter") s.letter = t.value; else if (isNum(t.value)) s.min = +t.value;
+    save(); return;
+  }
+});
+$("#main").addEventListener("change", e => { if (e.target.tagName === "SELECT") { const c = cur(), crow = e.target.closest("tr[data-cat]"); if (c && crow) { c.categories.find(x => x.id === crow.dataset.cat)[e.target.dataset.cf] = e.target.value; save(); } } });
+
+$("#main").addEventListener("click", async e => {
+  const b = e.target.closest("[data-act]"); if (!b) return;
+  const c = cur(), act = b.dataset.act;
+  const catOf = () => c.categories.find(x => x.id === b.closest("[data-cat]").dataset.cat);
+  if (act === "settings") { view = "settings"; renderMain(); $("#main").scrollTop = 0; }
+  else if (act === "back") { view = "grades"; renderMain(); renderSide(); $("#main").scrollTop = 0; }
+  else if (act === "addItem") {
+    const k = catOf(), n = +b.dataset.n || 1, base = k.name.replace(/s$/i, "");
+    const rows = $(`[data-cat="${k.id}"] .rows`), added = [];
+    for (let i = 0; i < n; i++) {
+      const it = { id: uid(), name: `${base} ${k.items.length + 1}`, score: null, max: null, date: "" };
+      k.items.push(it); added.push(it); rows.insertAdjacentHTML("beforeend", rowHTML(it));
+    }
+    save(); updateDerived();
+    $(`[data-item="${added[0].id}"] [data-f="score"]`, rows).focus();
+  }
+  else if (act === "delItem") {
+    const k = catOf(), id = b.closest("[data-item]").dataset.item;
+    k.items = k.items.filter(x => x.id !== id); save();
+    b.closest("[data-item]").remove(); updateDerived();
+  }
+  else if (act === "addCat") { c.categories.push(newCat("新项目", 0, { planned: 1 })); save(); renderSettings(c); }
+  else if (act === "delCat") {
+    const k = c.categories.find(x => x.id === b.closest("tr").dataset.cat);
+    if (k.items.length && !await dialog({ title: `删除“${k.name}”？`, body: `里面已录入的 ${k.items.length} 项成绩会一起删除，无法恢复。`, ok: "删除", danger: true })) return;
+    c.categories = c.categories.filter(x => x !== k); save(); renderSettings(c);
+  }
+  else if (act === "addScale") { c.scale.push({ letter: "?", min: 0 }); save(); renderSettings(c); }
+  else if (act === "delScale") { c.scale.splice(+b.closest("tr").dataset.sc, 1); save(); renderSettings(c); }
+  else if (act === "delCourse") {
+    if (!await dialog({ title: `删除 ${c.code}？`, body: "这门课的所有成绩都会被删除，无法恢复。建议先“导出备份”。", ok: "删除课程", danger: true })) return;
+    S.courses = S.courses.filter(x => x !== c); S.activeId = S.courses[0]?.id ?? null; view = "grades"; save(); renderSide(); renderMain();
+  }
+});
+
+$("#courseList").addEventListener("click", e => {
+  const el = e.target.closest("[data-course]"); if (!el) return;
+  S.activeId = el.dataset.course; view = "grades"; save(); renderSide(); renderMain(); $("#main").scrollTop = 0;
+});
+$("#addCourse").addEventListener("click", () => {
+  const c = blankCourse(); S.courses.push(c); S.activeId = c.id; view = "settings"; save(); renderSide(); renderMain(); $("#main").scrollTop = 0;
+});
+
+/* export / import */
+$("#btnExport").addEventListener("click", async () => {
+  const raw = JSON.stringify(S, null, 2), name = `GradeTracker-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  try {
+    if (native) { await native.postMessage({ op: "export", data: raw, name }); }
+    else { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([raw], { type: "application/json" })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
+  } catch (e) { await dialog({ title: "导出失败", body: String(e), hideCancel: true }); }
+});
+async function applyImport(text) {
+  let d; try { d = JSON.parse(text); } catch { d = null; }
+  if (!d || !Array.isArray(d.courses)) return dialog({ title: "无法导入", body: "这不是有效的 Grade Tracker 备份文件。", hideCancel: true });
+  if (!await dialog({ title: "导入并覆盖？", body: `备份里有 ${d.courses.length} 门课程。导入会替换现在的全部数据。`, ok: "导入并覆盖", danger: true })) return;
+  S = d; S.activeId = S.courses.some(c => c.id === S.activeId) ? S.activeId : S.courses[0]?.id ?? null; view = "grades";
+  await saveNow(); renderSide(); renderMain();
+}
+$("#btnImport").addEventListener("click", async () => {
+  if (native) { const t = await native.postMessage({ op: "import" }); if (t) applyImport(t); }
+  else $("#fileIn").click();
+});
+$("#fileIn").addEventListener("change", e => { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => applyImport(String(r.result)); r.readAsText(f); e.target.value = ""; });
+
+/* boot */
+(async () => { await loadState(); renderSide(); renderMain(); if (!$("#saveState").textContent) $("#saveState").textContent = "数据保存在本机"; })();
+</script>
+</body>
+</html>
