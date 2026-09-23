@@ -84,6 +84,25 @@ button, input, select { font: inherit; color: inherit; }
 .assume { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 12px; color: var(--ink2); }
 .assume input { width: 64px; text-align: center; }
 .assume b { color: var(--ink); }
+
+/* what-if simulator */
+.wf-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; margin-bottom: 10px; }
+.wf-head h2 { margin: 0; }
+.wf-projected { font-size: 15px; color: var(--ink2); white-space: nowrap; }
+.wf-projected b { font-size: 22px; color: var(--ink); font-weight: 800; margin-right: 6px; }
+.wf-baseline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; color: var(--ink2); padding: 10px 12px; background: var(--bg); border-radius: 10px; margin-bottom: 12px; }
+.wf-baseline input { width: 60px; text-align: center; }
+.wf-row { display: grid; grid-template-columns: minmax(120px, 1.1fr) minmax(90px, 1.4fr) 78px 90px 26px; align-items: center; gap: 10px; padding: 8px 2px; border-bottom: 1px solid var(--line); }
+.wf-row:last-child { border-bottom: 0; }
+.wf-label { font-weight: 600; font-size: 13.5px; }
+.wf-label small { display: block; font-weight: 500; color: var(--ink3); font-size: 11.5px; margin-top: 1px; }
+.wf-row input[type=range] { width: 100%; accent-color: var(--accent); }
+.wf-num { display: flex; align-items: center; gap: 4px; color: var(--ink2); }
+.wf-num input { width: 58px; text-align: right; font-weight: 600; }
+.wf-eq { color: var(--ink3); font-size: 11.5px; white-space: nowrap; }
+.wf-reset { border: 0; background: transparent; color: var(--ink3); cursor: pointer; font-size: 15px; border-radius: 6px; height: 26px; width: 26px; }
+.wf-reset:hover { color: var(--accent); background: var(--accent-soft); }
+@media (max-width: 700px) { .wf-row { grid-template-columns: 1fr; gap: 4px; } .wf-eq { display: none; } }
 table.matrix { width: 100%; border-collapse: separate; border-spacing: 0; }
 .matrix th, .matrix td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
 .matrix th { font-weight: 600; color: var(--ink2); font-size: 12.5px; background: transparent; }
@@ -264,16 +283,25 @@ const remaining = c => pendingCount(c) + phantomCount(c);
 const gradedCount = c => c.items.filter(isGraded).length;
 
 /* Build the list of scoring entries for a category.
-   fill === null → graded items only; fill = number → ungraded/planned items get fill % of their max. */
+   fill === null            → graded items only.
+   fill === a number        → ungraded/planned items all get fill % of their max (flat what-if).
+   fill === {fn, rest}      → fn(item) gives each pending item's % individually (null/undefined = leave
+                              it out); rest gives the % for planned-but-not-yet-added items (or null to
+                              leave them out). Used by the per-item what-if simulator. */
 function catList(c, fill) {
+  const isFlat = typeof fill === "number";
+  const isPer = fill && typeof fill === "object";
   const list = [];
   for (const it of c.items) {
-    if (isGraded(it)) list.push({ s: +it.score, m: isNum(it.max) ? +it.max : c.defaultMax, id: it.id });
-    else if (fill !== null) { const m = maxOf(it, c); list.push({ s: fill / 100 * m, m, id: it.id }); }
+    if (isGraded(it)) { list.push({ s: +it.score, m: isNum(it.max) ? +it.max : c.defaultMax, id: it.id }); continue; }
+    let fv = null;
+    if (isFlat) fv = fill; else if (isPer) fv = fill.fn(it);
+    if (fv !== null && fv !== undefined) { const m = maxOf(it, c); list.push({ s: fv / 100 * m, m, id: it.id }); }
   }
-  if (fill !== null) {
+  const restFill = isFlat ? fill : isPer ? fill.rest : null;
+  if (restFill !== null && restFill !== undefined) {
     const dm = c.defaultMax > 0 ? c.defaultMax : 100;
-    for (let i = 0; i < phantomCount(c); i++) list.push({ s: fill / 100 * dm, m: dm, id: null });
+    for (let i = 0; i < phantomCount(c); i++) list.push({ s: restFill / 100 * dm, m: dm, id: null });
   }
   if (c.doubleHighest && list.length) {
     const best = list.reduce((a, b) => (b.m > 0 ? b.s / b.m : -Infinity) > (a.m > 0 ? a.s / a.m : -Infinity) ? b : a);
@@ -417,23 +445,98 @@ function renderMain() {
     </div>
     ${Math.abs(totalWeight(c) - 100) > 0.01 ? `<div class="card" style="border-color:var(--bad);color:var(--bad)">注意：各项权重之和是 ${fmt(totalWeight(c), 1)}%，不是 100%。请到【课程设置】检查。</div>` : ""}
     <section class="card" id="summary"></section>
+    <section class="card" id="whatif">
+      <div class="wf-head">
+        <h2>模拟器：如果我这样考，最后会是多少分？</h2>
+        <div class="wf-projected">预测最终总评 <b id="wfProjected"></b></div>
+      </div>
+      <div class="wf-baseline">还没单独调整的项目，默认按
+        <input id="wfBase" inputmode="decimal" value="${esc(whatIfBaseline(c))}"> % 算
+        <button class="btn small ghost" data-act="wfResetAll">全部恢复默认</button></div>
+      <div id="wfRows"></div>
+      <div class="hint" style="margin-top:8px">拖动滑块或直接改数字，给某一项设一个假设分数，上面的预测总评会立刻更新。点 ↺ 可以把某一项恢复成默认值。这些只是模拟，不影响你已经录入的真实成绩。</div>
+    </section>
     <section class="card">
       <h2>想拿到某个等级，剩下平均要考多少？</h2>
       <div id="matrix"></div>
       <div class="hint" style="margin-top:8px">假设剩下所有还没出分的项目都拿到同一个百分比，这就是至少要拿多少（已向上取整到 0.1%）。</div>
-      <div class="assume" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">想估算大概会考多少分？剩下的项目预计能拿
-        <input id="assume" inputmode="decimal" value="${esc(assumeValue(c))}"> %
-        <span>→ 预测最终总评 <b id="proj"></b></span></div>
     </section>
     <div id="cats">${c.categories.map(catCard).join("")}</div>
   </div>`;
+  renderWhatIf(c);
   updateDerived();
+}
+
+function eqLabel(v, max) { return isNum(max) && max > 0 ? `≈ ${fmt(v / 100 * max, 1)} / ${fmt(max, max % 1 ? 1 : 0)}` : ""; }
+
+/* Rebuild the what-if row list. Call this only when the SET of rows can have changed
+   (items added/removed, planned count changed, baseline changed) — not on every slider
+   drag, or focus/drag state would be lost mid-interaction. */
+function renderWhatIf(course) {
+  const el = $("#wfRows"); if (!el) return;
+  const rows = whatIfRows(course);
+  el.innerHTML = rows.length ? rows.map(r => {
+    const v = whatIfValue(course, r.key), overridden = whatIfHasOverride(course, r.key);
+    return `<div class="wf-row" data-wf-row="${esc(r.key)}">
+      <div class="wf-label">${esc(r.label)}${r.sub ? `<small>${esc(r.sub)}</small>` : ""}</div>
+      <input type="range" min="0" max="110" step="1" value="${Math.min(110, Math.max(0, v))}" data-wf="slider" data-key="${esc(r.key)}" data-max="${r.max}">
+      <div class="wf-num"><input type="text" inputmode="decimal" value="${v}" data-wf="num" data-key="${r.key}" data-max="${r.max}"><span>%</span></div>
+      <span class="wf-eq" data-wf="eq">${eqLabel(v, r.max)}</span>
+      <button class="wf-reset" data-act="wfReset" data-key="${esc(r.key)}" title="恢复默认"${overridden ? "" : ' style="visibility:hidden"'}>↺</button>
+    </div>`;
+  }).join("") : `<div class="hint" style="padding:6px 2px">所有项目都已经出分，没有可以模拟的了。</div>`;
+  const baseEl = $("#wfBase"); if (baseEl) baseEl.value = whatIfBaseline(course);
+  updateWhatIfSummary();
+}
+
+/* Cheap: only touches the projected-grade line, safe to call on every slider tick. */
+function updateWhatIfSummary() {
+  const c = cur(); if (!c || !$("#wfProjected")) return;
+  const p = projectedCalc(c), L = letterFor(c, p);
+  $("#wfProjected").innerHTML = `${p === null ? "—" : fmt(p, 2) + "%"} ${L ? `<span class="letter ${letterClass(c, L)}">${esc(L)}</span>` : ""}`;
 }
 
 function assumeValue(c) {
   if (c.assume !== null && c.assume !== undefined && c.assume !== "") return c.assume;
   const p = calc(c, () => null);
   return p === null ? 80 : Math.min(100, Math.round(p));
+}
+
+/* ───────────────────────── what-if simulator ───────────────────────── */
+/* One "row" per thing you could still put a hypothetical score on: an already-added
+   ungraded item, or (grouped as one row) the planned-but-not-yet-added items of a category. */
+function whatIfRows(course) {
+  const rows = [];
+  for (const c of course.categories) {
+    if (c.weight <= 0) continue;
+    for (const it of c.items) {
+      if (!isGraded(it)) rows.push({ key: it.id, label: it.name || "未命名", sub: c.name, max: maxOf(it, c) });
+    }
+    const ph = phantomCount(c);
+    if (ph > 0) {
+      const isWholeCat = c.items.length === 0 && ph === 1;
+      rows.push({
+        key: c.id + ":rest",
+        label: isWholeCat ? c.name : `其余 ${ph} 项`,
+        sub: isWholeCat ? "" : c.name,
+        max: c.defaultMax > 0 ? c.defaultMax : 100,
+      });
+    }
+  }
+  return rows;
+}
+const whatIfBaseline = c => assumeValue(c);
+function whatIfValue(course, key) {
+  const v = course.whatIf && course.whatIf[key];
+  return isNum(v) ? +v : whatIfBaseline(course);
+}
+function whatIfHasOverride(course, key) { return isNum(course.whatIf && course.whatIf[key]); }
+/* The projected final grade if every remaining item scores what its what-if slider says. */
+function projectedCalc(course) {
+  return calc(course, cat => ({
+    fn: it => whatIfValue(course, it.id),
+    rest: whatIfValue(course, cat.id + ":rest"),
+  }));
 }
 
 function catCard(c) {
@@ -481,12 +584,7 @@ function updateDerived() {
     <div class="tile"><div class="lbl">还没出分的项目</div><div class="mid">${c.categories.reduce((a, k) => a + remaining(k), 0)} 项</div>
       <div class="sm">含未录入的计划项目</div></div></div>`;
 
-  /* projection */
-  const a = num($("#assume")?.value);
-  const assumed = a === null ? assumeValue(c) : a;
-  const proj = calc(c, () => assumed);
-  const pl = letterFor(c, proj);
-  const projEl = $("#proj"); if (projEl) projEl.innerHTML = `${proj === null ? "—" : fmt(proj, 2) + "%"} ${pl ? `<span class="letter ${letterClass(c, pl)}" style="font-size:14px">${esc(pl)}</span>` : ""}`;
+  updateWhatIfSummary();
 
   /* target table — one column: the average % needed across everything still ungraded */
   const remCats = c.categories.filter(k => remaining(k) > 0 && k.weight > 0);
@@ -587,14 +685,29 @@ function updateWsum() {
 $("#main").addEventListener("input", e => {
   const c = cur(); if (!c) return;
   const t = e.target;
-  if (t.id === "assume") { c.assume = t.value.trim() === "" ? null : num(t.value); save(); updateDerived(); return; }
+  if (t.id === "wfBase") { c.assume = t.value.trim() === "" ? null : num(t.value); save(); renderWhatIf(c); return; }
+  if (t.dataset.wf === "slider" || t.dataset.wf === "num") {
+    const key = t.dataset.key, max = +t.dataset.max;
+    let v = num(t.value); if (v === null) v = 0; v = Math.max(0, Math.min(300, v));
+    c.whatIf = c.whatIf || {}; c.whatIf[key] = v;
+    const row = t.closest(".wf-row");
+    $('[data-wf="slider"]', row).value = Math.min(110, Math.max(0, v));
+    if (t.dataset.wf === "num") { /* keep what the user is typing, don't fight the cursor */ } else $('[data-wf="num"]', row).value = v;
+    $('[data-wf="eq"]', row).textContent = eqLabel(v, max);
+    $(".wf-reset", row).style.visibility = "visible";
+    save(); updateWhatIfSummary(); return;
+  }
   const row = t.closest("[data-item]");
   if (row && t.dataset.f) {
     const card = t.closest("[data-cat]"), k = c.categories.find(x => x.id === card.dataset.cat);
     const it = k.items.find(x => x.id === row.dataset.item), f = t.dataset.f;
+    const wasGraded = isGraded(it);
     if (f === "name" || f === "date") it[f] = t.value;
     else it[f] = t.value.trim() === "" ? null : (isNum(t.value.trim()) ? +t.value.trim() : it[f]);
-    save(); updateDerived(); return;
+    save();
+    if (f === "score" && isGraded(it) !== wasGraded) renderWhatIf(c);
+    updateDerived();
+    return;
   }
   /* settings */
   if (t.dataset.s) { const f = t.dataset.s; c[f] = t.type === "checkbox" ? t.checked : t.value; save(); return; }
@@ -628,14 +741,19 @@ $("#main").addEventListener("click", async e => {
       const it = { id: uid(), name: `${base} ${k.items.length + 1}`, score: null, max: null, date: "" };
       k.items.push(it); added.push(it); rows.insertAdjacentHTML("beforeend", rowHTML(it));
     }
-    save(); updateDerived();
+    save(); renderWhatIf(c); updateDerived();
     $(`[data-item="${added[0].id}"] [data-f="score"]`, rows).focus();
   }
   else if (act === "delItem") {
     const k = catOf(), id = b.closest("[data-item]").dataset.item;
     k.items = k.items.filter(x => x.id !== id); save();
-    b.closest("[data-item]").remove(); updateDerived();
+    b.closest("[data-item]").remove(); renderWhatIf(c); updateDerived();
   }
+  else if (act === "wfReset") {
+    if (c.whatIf) delete c.whatIf[b.dataset.key];
+    save(); renderWhatIf(c);
+  }
+  else if (act === "wfResetAll") { c.whatIf = {}; save(); renderWhatIf(c); }
   else if (act === "addCat") { c.categories.push(newCat("新项目", 0, { planned: 1 })); save(); renderSettings(c); }
   else if (act === "delCat") {
     const k = c.categories.find(x => x.id === b.closest("tr").dataset.cat);
