@@ -103,6 +103,18 @@ button, input, select { font: inherit; color: inherit; }
 .wf-reset { border: 0; background: transparent; color: var(--ink3); cursor: pointer; font-size: 15px; border-radius: 6px; height: 26px; width: 26px; }
 .wf-reset:hover { color: var(--accent); background: var(--accent-soft); }
 @media (max-width: 700px) { .wf-row { grid-template-columns: 1fr; gap: 4px; } .wf-eq { display: none; } }
+
+/* impact ranking */
+.im-row { display: grid; grid-template-columns: minmax(140px, 1.2fr) 2fr 74px; align-items: center; gap: 12px; padding: 9px 2px; border-bottom: 1px solid var(--line); }
+.im-row:last-child { border-bottom: 0; }
+.im-label { font-weight: 600; font-size: 13.5px; }
+.im-label small { display: block; font-weight: 500; color: var(--ink3); font-size: 11.5px; margin-top: 1px; }
+.im-label .chip { margin-left: 8px; vertical-align: 1px; }
+.im-bar-wrap { height: 10px; border-radius: 99px; background: var(--line); overflow: hidden; }
+.im-bar { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--accent), var(--hard)); }
+.im-val { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.impact-note { margin-top: 10px; font-size: 12.5px; color: var(--ink2); line-height: 1.6; }
+.impact-note b { color: var(--ink); }
 table.matrix { width: 100%; border-collapse: separate; border-spacing: 0; }
 .matrix th, .matrix td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
 .matrix th { font-weight: 600; color: var(--ink2); font-size: 12.5px; background: transparent; }
@@ -456,6 +468,12 @@ function renderMain() {
       <div id="wfRows"></div>
       <div class="hint" style="margin-top:8px">拖动滑块或直接改数字，给某一项设一个假设分数，上面的预测总评会立刻更新。点 ↺ 可以把某一项恢复成默认值。这些只是模拟，不影响你已经录入的真实成绩。</div>
     </section>
+    <section class="card" id="impact">
+      <h2>现在最该花时间在哪？</h2>
+      <div class="hint" style="margin-bottom:10px">按上面模拟器目前的设置算的：这一类剩下的项目，如果平均分整体再提高 10 个百分点，总评大概会跟着变多少。</div>
+      <div id="impactRows"></div>
+      <div id="impactNote" class="impact-note"></div>
+    </section>
     <section class="card">
       <h2>想拿到某个等级，剩下平均要考多少？</h2>
       <div id="matrix"></div>
@@ -494,6 +512,48 @@ function updateWhatIfSummary() {
   const c = cur(); if (!c || !$("#wfProjected")) return;
   const p = projectedCalc(c), L = letterFor(c, p);
   $("#wfProjected").innerHTML = `${p === null ? "—" : fmt(p, 2) + "%"} ${L ? `<span class="letter ${letterClass(c, L)}">${esc(L)}</span>` : ""}`;
+  renderImpact(c);
+}
+
+/* How much the final grade would move if THIS category's remaining work (as currently set in the
+   what-if simulator) all scored `delta` percentage points higher — a numerical derivative, so it
+   naturally accounts for drop-lowest and double-the-highest instead of just weight × remaining%. */
+function categoryImpact(course, delta = 10) {
+  const base = projectedCalc(course);
+  if (base === null) return [];
+  return course.categories
+    .filter(cat => cat.weight > 0 && remaining(cat) > 0)
+    .map(cat => {
+      const bumped = calc(course, c2 => ({
+        fn: it => whatIfValue(course, it.id) + (c2.id === cat.id ? delta : 0),
+        rest: whatIfValue(course, c2.id + ":rest") + (c2.id === cat.id ? delta : 0),
+      }));
+      return { cat, impact: bumped === null ? 0 : bumped - base };
+    })
+    .sort((a, b) => b.impact - a.impact);
+}
+/* Read-only, so — unlike renderWhatIf — always safe to fully rebuild; called on every update. */
+function renderImpact(course) {
+  const rowsEl = $("#impactRows"), noteEl = $("#impactNote"); if (!rowsEl) return;
+  const rows = categoryImpact(course, 10);
+  if (!rows.length) {
+    rowsEl.innerHTML = `<div class="hint" style="padding:6px 2px">所有项目都出分了，没什么好比的。</div>`;
+    noteEl.textContent = ""; return;
+  }
+  const maxAbs = Math.max(...rows.map(r => Math.abs(r.impact)), 0.01);
+  rowsEl.innerHTML = rows.map((r, i) => `
+    <div class="im-row">
+      <div class="im-label">${esc(r.cat.name)}${i === 0 && rows.length > 1 ? '<span class="chip">影响最大</span>' : ""}
+        <small>剩 ${remaining(r.cat)} 项 · 占总评 ${fmt(r.cat.weight, 1).replace(/\.0$/, "")}%</small></div>
+      <div class="im-bar-wrap"><div class="im-bar" style="width:${Math.max(4, Math.abs(r.impact) / maxAbs * 100)}%"></div></div>
+      <div class="im-val">${r.impact >= 0 ? "+" : ""}${fmt(r.impact, 2)}%</div>
+    </div>`).join("");
+  if (rows.length >= 2) {
+    const top = rows[0], weak = rows[rows.length - 1];
+    if (weak.impact > 0.01 && top.impact > weak.impact * 1.15) {
+      noteEl.innerHTML = `<b>${esc(top.cat.name)}</b> 剩余部分对总评的影响力，是 <b>${esc(weak.cat.name)}</b> 剩余部分的 <b>${fmt(top.impact / weak.impact, 1)} 倍</b>——同样多的复习时间，花在前者更划算。`;
+    } else noteEl.textContent = "现在这几类剩余项目的影响力差不多，不用特别偏重哪一类。";
+  } else noteEl.textContent = "";
 }
 
 function assumeValue(c) {
