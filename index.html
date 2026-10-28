@@ -214,7 +214,7 @@ const num = v => isNum(v) ? +v : null;
 const DEFAULT_SCALE = () => [{ letter: "A", min: 90 }, { letter: "B", min: 80 }, { letter: "C", min: 70 }, { letter: "D", min: 60 }];
 
 function newCat(name, weight, o = {}) {
-  return { id: uid(), name, weight, method: "avg", drop: 0, doubleHighest: false, planned: 1, defaultMax: 100, items: [], ...o };
+  return { id: uid(), name, weight, method: "avg", drop: 0, doubleHighest: false, bonus: 0, planned: 1, defaultMax: 100, items: [], ...o };
 }
 function math350() {
   return {
@@ -338,14 +338,21 @@ function catPct(c, fill) {
   const v = list.filter(e => e.m > 0);
   return v.length ? v.reduce((a, e) => a + e.s / e.m * 100, 0) / v.length : null;
 }
+/* A bonus category (bonus = N > 0) has no weight: each item adds (its score rate × N) percentage
+   points on top of the weighted course grade — e.g. "bonus quiz rate × 5 is added to your final". */
+const isBonus = c => +c.bonus > 0;
+function bonusPoints(c, fill) {
+  return catList(c, fill).list.reduce((a, e) => a + (e.m > 0 ? e.s / e.m : 0), 0) * c.bonus;
+}
 /* Course grade. fills(c) → null | fill percent for that category. */
 function calc(course, fills) {
-  let n = 0, d = 0;
+  let n = 0, d = 0, bonus = 0;
   for (const c of course.categories) {
+    if (isBonus(c)) { bonus += bonusPoints(c, fills(c)); continue; }
     const p = catPct(c, fills(c));
     if (p !== null && c.weight > 0) { n += c.weight * p; d += c.weight; }
   }
-  return d > 0 ? n / d : null;
+  return d > 0 ? n / d + bonus : null;
 }
 const totalWeight = course => course.categories.reduce((a, c) => a + (+c.weight || 0), 0);
 function letterFor(course, pct) {
@@ -522,7 +529,7 @@ function categoryImpact(course, delta = 10) {
   const base = projectedCalc(course);
   if (base === null) return [];
   return course.categories
-    .filter(cat => cat.weight > 0 && remaining(cat) > 0)
+    .filter(cat => (cat.weight > 0 || isBonus(cat)) && remaining(cat) > 0)
     .map(cat => {
       const bumped = calc(course, c2 => ({
         fn: it => whatIfValue(course, it.id) + (c2.id === cat.id ? delta : 0),
@@ -544,7 +551,7 @@ function renderImpact(course) {
   rowsEl.innerHTML = rows.map((r, i) => `
     <div class="im-row">
       <div class="im-label">${esc(r.cat.name)}${i === 0 && rows.length > 1 ? '<span class="chip">影响最大</span>' : ""}
-        <small>剩 ${remaining(r.cat)} 项 · 占总评 ${fmt(r.cat.weight, 1).replace(/\.0$/, "")}%</small></div>
+        <small>剩 ${remaining(r.cat)} 项 · ${isBonus(r.cat) ? "额外加分" : "占总评 " + fmt(r.cat.weight, 1).replace(/\.0$/, "") + "%"}</small></div>
       <div class="im-bar-wrap"><div class="im-bar" style="width:${Math.max(4, Math.abs(r.impact) / maxAbs * 100)}%"></div></div>
       <div class="im-val">${r.impact >= 0 ? "+" : ""}${fmt(r.impact, 2)}%</div>
     </div>`).join("");
@@ -568,7 +575,7 @@ function assumeValue(c) {
 function whatIfRows(course) {
   const rows = [];
   for (const c of course.categories) {
-    if (c.weight <= 0) continue;
+    if (c.weight <= 0 && !isBonus(c)) continue;
     for (const it of c.items) {
       if (!isGraded(it)) rows.push({ key: it.id, label: it.name || "未命名", sub: c.name, max: maxOf(it, c) });
     }
@@ -602,8 +609,11 @@ function projectedCalc(course) {
 function catCard(c) {
   return `<section class="card" data-cat="${c.id}">
     <div class="cat-head">
-      <div><h3>${esc(c.name)}</h3><span class="chip">占总评 ${fmt(c.weight, 1).replace(/\.0$/, "")}%</span>
-        <span class="chip gray">${c.method === "points" ? "总分制" : "平均百分比"}${c.drop ? " · 去掉最低 " + c.drop + " 项" : ""}${c.doubleHighest ? " · 最高分算两次" : ""}</span></div>
+      <div><h3>${esc(c.name)}</h3>
+        ${isBonus(c)
+          ? `<span class="chip">额外加分 · 每项得分率 × ${fmt(c.bonus, 1).replace(/\.0$/, "")}</span>`
+          : `<span class="chip">占总评 ${fmt(c.weight, 1).replace(/\.0$/, "")}%</span>
+        <span class="chip gray">${c.method === "points" ? "总分制" : "平均百分比"}${c.drop ? " · 去掉最低 " + c.drop + " 项" : ""}${c.doubleHighest ? " · 最高分算两次" : ""}</span>`}</div>
       <div class="cat-stat" data-stat></div>
     </div>
     <div class="rows">
@@ -665,7 +675,9 @@ function updateDerived() {
   for (const k of c.categories) {
     const card = $(`[data-cat="${k.id}"]`); if (!card) continue;
     const p = catPct(k, null), lockedPct = catPct(k, 0);
-    $("[data-stat]", card).innerHTML = p === null ? `<span class="hint">还没有分数</span>` :
+    $("[data-stat]", card).innerHTML = isBonus(k)
+      ? (p === null ? `<span class="hint">还没有分数</span>` : `已加 <b>+${fmt(bonusPoints(k, null), 2)}</b> 分到总评 · 满分最多 +${fmt(k.bonus * Math.max(k.planned, k.items.length), 1).replace(/\.0$/, "")}`)
+      : p === null ? `<span class="hint">还没有分数</span>` :
       `当前 <b>${fmt(p, 2)}%</b> · 已锁定 ${fmt(lockedPct * k.weight / 100, 2)} / ${fmt(k.weight, 1).replace(/\.0$/, "")} 分`;
     const dropped = new Set(catList(k, null).dropped.map(e => e.id));
     for (const it of k.items) {
@@ -707,17 +719,18 @@ function renderSettings(c) {
       <label>老师<input data-s="instructor" value="${esc(c.instructor)}"></label>
       <label class="full">备注（考试时间等）<input data-s="notes" value="${esc(c.notes)}"></label></div></section>
     <section class="card"><h2>成绩构成（syllabus 里的 Grading Weights）</h2>
-      <table class="set"><thead><tr><th>项目名称</th><th style="width:84px">权重 %</th><th style="width:130px">计算方式</th><th style="width:80px">去掉最低</th><th style="width:80px">最高分×2</th><th style="width:88px">计划数量</th><th style="width:88px">默认满分</th><th style="width:34px"></th></tr></thead>
+      <table class="set"><thead><tr><th>项目名称</th><th style="width:84px">权重 %</th><th style="width:130px">计算方式</th><th style="width:80px">去掉最低</th><th style="width:80px">最高分×2</th><th style="width:80px">加分系数</th><th style="width:88px">计划数量</th><th style="width:88px">默认满分</th><th style="width:34px"></th></tr></thead>
       <tbody>${c.categories.map(k => `<tr data-cat="${k.id}">
         <td><input data-cf="name" value="${esc(k.name)}"></td>
         <td><input data-cf="weight" inputmode="decimal" value="${k.weight}"></td>
         <td><select data-cf="method"><option value="avg" ${k.method === "avg" ? "selected" : ""}>平均百分比</option><option value="points" ${k.method === "points" ? "selected" : ""}>总分制</option></select></td>
         <td><input data-cf="drop" inputmode="numeric" value="${k.drop}"></td>
         <td style="text-align:center"><input type="checkbox" data-cf="doubleHighest" ${k.doubleHighest ? "checked" : ""}></td>
+        <td><input data-cf="bonus" inputmode="decimal" value="${k.bonus || 0}"></td>
         <td><input data-cf="planned" inputmode="numeric" value="${k.planned}"></td>
         <td><input data-cf="defaultMax" inputmode="decimal" value="${k.defaultMax}"></td>
         <td><button class="btn small danger" data-act="delCat" title="删除">×</button></td></tr>`).join("")}</tbody></table>
-      <div class="hint" style="margin-top:6px"><b>最高分×2</b>：勾选后，这一类里得分率最高的一项会被再算一次（比如"5 次考试，最高一次算两次"）。</div>
+      <div class="hint" style="margin-top:6px"><b>最高分×2</b>：勾选后，这一类里得分率最高的一项会被再算一次（比如"5 次考试，最高一次算两次"）。<br><b>加分系数</b>：填大于 0 的数字，这一类就变成"额外加分"——不占权重，每一项的得分率乘以这个数，直接加到总评上（比如 bonus quiz 得分率 × 5：考 28/40 就加 0.7 × 5 = 3.5 分）。填 0 是普通类别。</div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
         <button class="btn small" data-act="addCat">＋ 添加项目</button>
         <div>权重合计：<span class="wsum" id="wsum"></span></div></div>
