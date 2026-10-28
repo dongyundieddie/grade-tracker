@@ -338,11 +338,13 @@ function catPct(c, fill) {
   const v = list.filter(e => e.m > 0);
   return v.length ? v.reduce((a, e) => a + e.s / e.m * 100, 0) / v.length : null;
 }
-/* A bonus category (bonus = N > 0) has no weight: each item adds (its score rate × N) percentage
-   points on top of the weighted course grade — e.g. "bonus quiz rate × 5 is added to your final". */
+/* A bonus category (bonus = N > 0) has no weight: the category's overall score rate (per its
+   method — "points" pools all items together) × N is added as percentage points on top of the
+   weighted course grade — e.g. "the two bonus quizzes combined, rate × 5, added to your final". */
 const isBonus = c => +c.bonus > 0;
 function bonusPoints(c, fill) {
-  return catList(c, fill).list.reduce((a, e) => a + (e.m > 0 ? e.s / e.m : 0), 0) * c.bonus;
+  const p = catPct(c, fill);
+  return p === null ? 0 : p / 100 * c.bonus;
 }
 /* Course grade. fills(c) → null | fill percent for that category. */
 function calc(course, fills) {
@@ -611,7 +613,7 @@ function catCard(c) {
     <div class="cat-head">
       <div><h3>${esc(c.name)}</h3>
         ${isBonus(c)
-          ? `<span class="chip">额外加分 · 每项得分率 × ${fmt(c.bonus, 1).replace(/\.0$/, "")}</span>`
+          ? `<span class="chip">额外加分 · 合起来的得分率 × ${fmt(c.bonus, 1).replace(/\.0$/, "")}</span><span class="chip gray">${c.method === "points" ? "总分制" : "平均百分比"}</span>`
           : `<span class="chip">占总评 ${fmt(c.weight, 1).replace(/\.0$/, "")}%</span>
         <span class="chip gray">${c.method === "points" ? "总分制" : "平均百分比"}${c.drop ? " · 去掉最低 " + c.drop + " 项" : ""}${c.doubleHighest ? " · 最高分算两次" : ""}</span>`}</div>
       <div class="cat-stat" data-stat></div>
@@ -676,7 +678,7 @@ function updateDerived() {
     const card = $(`[data-cat="${k.id}"]`); if (!card) continue;
     const p = catPct(k, null), lockedPct = catPct(k, 0);
     $("[data-stat]", card).innerHTML = isBonus(k)
-      ? (p === null ? `<span class="hint">还没有分数</span>` : `已加 <b>+${fmt(bonusPoints(k, null), 2)}</b> 分到总评 · 满分最多 +${fmt(k.bonus * Math.max(k.planned, k.items.length), 1).replace(/\.0$/, "")}`)
+      ? (p === null ? `<span class="hint">还没有分数</span>` : `已加 <b>+${fmt(bonusPoints(k, null), 2)}</b> 分到总评 · 最多 +${fmt(k.bonus, 1).replace(/\.0$/, "")}`)
       : p === null ? `<span class="hint">还没有分数</span>` :
       `当前 <b>${fmt(p, 2)}%</b> · 已锁定 ${fmt(lockedPct * k.weight / 100, 2)} / ${fmt(k.weight, 1).replace(/\.0$/, "")} 分`;
     const dropped = new Set(catList(k, null).dropped.map(e => e.id));
@@ -730,7 +732,7 @@ function renderSettings(c) {
         <td><input data-cf="planned" inputmode="numeric" value="${k.planned}"></td>
         <td><input data-cf="defaultMax" inputmode="decimal" value="${k.defaultMax}"></td>
         <td><button class="btn small danger" data-act="delCat" title="删除">×</button></td></tr>`).join("")}</tbody></table>
-      <div class="hint" style="margin-top:6px"><b>最高分×2</b>：勾选后，这一类里得分率最高的一项会被再算一次（比如"5 次考试，最高一次算两次"）。<br><b>加分系数</b>：填大于 0 的数字，这一类就变成"额外加分"——不占权重，每一项的得分率乘以这个数，直接加到总评上（比如 bonus quiz 得分率 × 5：考 28/40 就加 0.7 × 5 = 3.5 分）。填 0 是普通类别。</div>
+      <div class="hint" style="margin-top:6px"><b>最高分×2</b>：勾选后，这一类里得分率最高的一项会被再算一次（比如"5 次考试，最高一次算两次"）。<br><b>加分系数</b>：填大于 0 的数字，这一类就变成"额外加分"——不占权重，这一类合起来的得分率（按上面的计算方式）乘以这个数，直接加到总评上，最多加这么多分（比如两个 bonus quiz 合起来得分率 × 5：总分制下考 28/40 和 36/40，就是 64/80 = 80%，加 0.8 × 5 = 4 分）。填 0 是普通类别。</div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
         <button class="btn small" data-act="addCat">＋ 添加项目</button>
         <div>权重合计：<span class="wsum" id="wsum"></span></div></div>

@@ -25,8 +25,8 @@ Requires macOS 11 or later. No installer, no account, nothing sent over the netw
   cutoffs (e.g. A ≥ 90%, B ≥ 80%, ...).
 - Per-category options: average-of-scores vs. points-based, dropping the
   lowest N items, and doubling the highest score (for syllabi like "your
-  highest exam score counts twice"), and bonus categories whose items add
-  (score rate × N) points straight onto the final grade.
+  highest exam score counts twice"), and bonus categories whose combined score
+  rate × N is added as points straight onto the final grade.
 - Live current grade, the mathematically lowest/highest grade still possible,
   and a simple table of the average score still needed on ungraded work to
   reach each letter grade.
